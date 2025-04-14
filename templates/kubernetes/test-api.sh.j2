@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# Test API endpoints for {{ project_name }} deployed on Kubernetes
+#
+
+set -e
+NAMESPACE="{{ project_name | lower | replace(" ", "-") }}"
+
+# Get Kong gateway IP and port
+if kubectl get svc kong-proxy -n $NAMESPACE &> /dev/null; then
+  # If using our Kong deployment
+  KONG_IP=$(minikube ip)
+  KONG_PORT=$(kubectl get service/kong-proxy -n $NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
+else
+  # If using external Kong
+  echo "Using external Kong deployment. Please enter Kong gateway URL:"
+  read -p "Kong Gateway URL (e.g., http://localhost:8000): " KONG_URL
+  KONG_IP=$(echo $KONG_URL | awk -F[/:] '{print $4}')
+  KONG_PORT=$(echo $KONG_URL | awk -F[/:] '{print $5}')
+  if [[ -z "$KONG_PORT" ]]; then
+    KONG_PORT=80
+  fi
+fi
+
+echo "Testing {{ project_name }} API endpoints on Kong Gateway at http://$KONG_IP:$KONG_PORT"
+echo "========================================================================"
+
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+{% for service_name, service in unique_services.items() %}
+echo "Testing {{ service_name | replace('_', '-') }} endpoints:"
+{% for route in config.routes %}
+{% if route.service_name == service_name %}
+echo -n "  Testing {{ route.paths[0] }} ... "
+RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://$KONG_IP:$KONG_PORT{{ route.paths[0] }})
+if [[ "$RESPONSE" =~ ^2.* ]]; then
+  echo "OK (HTTP $RESPONSE)"
+  echo "  Response content:"
+  curl -s http://$KONG_IP:$KONG_PORT{{ route.paths[0] }} | jq . || echo "  Failed to parse JSON response"
+else
+  echo "FAILED (HTTP $RESPONSE)"
+  echo "  Error response:"
+  curl -s http://$KONG_IP:$KONG_PORT{{ route.paths[0] }}
+fi
+echo ""
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+# Test with authentication if configured
+{% set has_auth = false %}
+{% for consumer in config.consumers %}
+{% if consumer.auth_type == "key-auth" %}
+{% set has_auth = true %}
+echo "Testing with key authentication:"
+echo -n "  Authenticated request with api-key ... "
+{% for service_name, service in unique_services.items() %}
+{% for route in config.routes %}
+{% if route.service_name == service_name %}
+AUTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -H "apikey: demo-key-{{ consumer.username }}" http://$KONG_IP:$KONG_PORT{{ route.paths[0] }})
+if [[ "$AUTH_RESPONSE" =~ ^2.* ]]; then
+  echo "OK (HTTP $AUTH_RESPONSE)"
+  break 2
+else
+  echo "FAILED (HTTP $AUTH_RESPONSE)"
+fi
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% if not has_auth %}
+echo "No authentication configured, skipping auth tests."
+{% endif %}
+
+echo "========================================================================"
+echo "Test completed." 

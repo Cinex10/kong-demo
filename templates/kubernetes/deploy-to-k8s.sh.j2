@@ -1,0 +1,174 @@
+#!/bin/bash
+#
+# Deploy Kong and microservices to Kubernetes (minikube)
+# For {{ project_name }}
+#
+
+set -e
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$(dirname "$DIR")"
+NAMESPACE="{{ project_name | lower | replace(" ", "-") }}"
+
+echo "Deploying {{ project_name }} to Kubernetes"
+echo "=========================================="
+
+# Check kubectl is installed
+if ! command -v kubectl &> /dev/null; then
+  echo "Error: kubectl is required but not installed"
+  echo "Please install kubectl and try again"
+  exit 1
+fi
+
+# Check minikube is running
+if ! minikube status | grep -q "Running"; then
+  echo "Error: minikube is not running"
+  echo "Please start minikube with: minikube start"
+  exit 1
+fi
+
+# Print warning for service names with underscores
+echo "Checking service names for Kubernetes compatibility..."
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+{% for service_name, service in unique_services.items() %}
+{% if '_' in service_name %}
+echo "WARNING: Service name '{{ service_name }}' contains underscores"
+echo "         Kubernetes doesn't allow underscores in resource names"
+echo "         Using '{{ service_name | replace('_', '-') }}' instead"
+{% endif %}
+{% endfor %}
+
+# Verify that images are available in minikube
+echo "Verifying that necessary Docker images are available..."
+eval $(minikube docker-env)
+
+# Check if microservice images exist
+{% for service_name, service in unique_services.items() %}
+if ! docker images | grep -q "$NAMESPACE/{{ service_name }}"; then
+  echo "Warning: Image $NAMESPACE/{{ service_name }} not found in minikube registry"
+  echo "Please run ./docker-build.sh first or manually load the image with:"
+  echo "  eval \$(minikube docker-env)"
+  echo "  docker build -t $NAMESPACE/{{ service_name }}:latest ${PROJECT_DIR}/mock-apis/{{ service_name }}"
+  echo "  minikube image load $NAMESPACE/{{ service_name }}:latest"
+  
+  read -p "Do you want to continue anyway? (y/n) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+{% endfor %}
+
+# Install Kong Ingress Controller CRDs if not present
+if ! kubectl get crd kongplugins.configuration.konghq.com &> /dev/null; then
+  echo "Installing Kong Ingress Controller CRDs..."
+  kubectl apply -f https://raw.githubusercontent.com/Kong/kubernetes-ingress-controller/master/deploy/single/all-in-one-dbless.yaml
+  echo "Waiting for Kong Ingress Controller to be ready..."
+  kubectl rollout status deployment/ingress-kong -n kong
+else
+  echo "Kong Ingress Controller CRDs already installed"
+fi
+
+# Create namespace
+echo "Creating namespace: $NAMESPACE..."
+kubectl apply -f "$DIR/namespace.yaml"
+
+{% if not assume_kong_running %}
+# Deploy PostgreSQL
+echo "Deploying PostgreSQL..."
+kubectl apply -f "$DIR/postgres.yaml"
+echo "Waiting for PostgreSQL to be ready..."
+kubectl rollout status deployment/postgres -n $NAMESPACE
+
+# Deploy Kong
+echo "Deploying Kong..."
+kubectl apply -f "$DIR/kong.yaml"
+
+# Wait for the migrations to complete
+echo "Waiting for Kong migrations to complete..."
+kubectl wait --for=condition=complete job/kong-migrations -n $NAMESPACE --timeout=60s || echo "Migration job timeout, but continuing..."
+
+# Wait for Kong to be ready
+echo "Waiting for Kong to be ready..."
+kubectl rollout status deployment/kong -n $NAMESPACE
+{% endif %}
+
+# Deploy microservices
+echo "Deploying microservices..."
+kubectl apply -f "$DIR/microservices.yaml"
+
+# Check if any pods are in ErrImagePull state
+echo "Checking for image pull errors..."
+sleep 5
+if kubectl get pods -n $NAMESPACE | grep -q "ErrImagePull"; then
+  echo "WARNING: Some pods are experiencing image pull errors."
+  echo "Debugging information:"
+  kubectl get pods -n $NAMESPACE
+  kubectl describe pods -n $NAMESPACE | grep -A 10 "Events:"
+  
+  echo "Suggestion: Delete the pods and try again after ensuring images are available:"
+  echo "  kubectl delete -f \"$DIR/microservices.yaml\""
+  echo "  ./docker-build.sh"
+  echo "  kubectl apply -f \"$DIR/microservices.yaml\""
+  
+  read -p "Do you want to continue with deployment anyway? (y/n) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+# Wait for all services to be ready
+{% for service_name, service in unique_services.items() %}
+echo "Waiting for {{ service_name | replace('_', '-') }} to be ready..."
+kubectl rollout status deployment/{{ service_name | replace('_', '-') }} -n $NAMESPACE || echo "Warning: {{ service_name | replace('_', '-') }} may not be ready"
+{% endfor %}
+
+# Apply Kong configuration
+echo "Applying Kong configuration..."
+kubectl apply -f "$DIR/kong-config.yaml"
+
+# Get service URLs
+{% if not assume_kong_running %}
+KONG_IP=$(minikube ip)
+KONG_PORT=$(kubectl get service/kong-proxy -n $NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
+KONG_ADMIN_PORT=$(kubectl get service/kong-admin -n $NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
+KONG_GUI_PORT=$(kubectl get service/kong-admin -n $NAMESPACE -o jsonpath='{.spec.ports[1].nodePort}')
+
+echo "============================================================"
+echo "{{ project_name }} has been deployed to Kubernetes"
+echo ""
+echo "Kong Gateway is available at: http://$KONG_IP:$KONG_PORT"
+echo "Kong Admin API is available at: http://$KONG_IP:$KONG_ADMIN_PORT"
+echo "Kong Admin GUI is available at: http://$KONG_IP:$KONG_GUI_PORT"
+{% else %}
+echo "============================================================"
+echo "{{ project_name }} has been deployed to Kubernetes"
+echo ""
+echo "Services have been deployed to namespace: $NAMESPACE"
+echo "Kong configuration has been applied"
+{% endif %}
+
+echo ""
+echo "To access the API endpoints, use:"
+{% for service_name, service in unique_services.items() %}
+{% for route in config.routes %}
+{% if route.service_name == service_name %}
+echo "  http://<KONG_IP>:<KONG_PORT>{{ route.paths[0] }}"
+{% endif %}
+{% endfor %}
+{% endfor %}
+echo ""
+echo "To check the status of your pods:"
+echo "  kubectl get pods -n $NAMESPACE"
+echo ""
+echo "To see detailed information about a pod:"
+echo "  kubectl describe pod <pod-name> -n $NAMESPACE"
+echo ""
+echo "To view logs from a pod:"
+echo "  kubectl logs <pod-name> -n $NAMESPACE"
+echo ""
+echo "To clean up all resources, run: kubectl delete namespace $NAMESPACE" 

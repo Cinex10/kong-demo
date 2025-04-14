@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# Build Docker images for mock services and add them to minikube registry
+# For {{ project_name }}
+#
+
+set -e
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$(dirname "$DIR")"
+NAMESPACE="{{ project_name | lower | replace(" ", "-") }}"
+
+echo "Building Docker images for {{ project_name }} microservices"
+echo "============================================================"
+
+# Ensure we're using minikube's Docker daemon
+eval $(minikube docker-env)
+
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+{% for service_name, service in unique_services.items() %}
+echo "Building {{ service_name }} service..."
+cd "${PROJECT_DIR}/mock-apis/{{ service_name }}"
+docker build -t $NAMESPACE/{{ service_name }}:latest .
+
+# Save image to a tar file and explicitly load into minikube
+echo "Ensuring {{ service_name }} image is available in minikube..."
+TEMP_IMAGE_TAR="/tmp/$NAMESPACE-{{ service_name }}.tar"
+docker save $NAMESPACE/{{ service_name }}:latest -o "$TEMP_IMAGE_TAR"
+minikube image load "$TEMP_IMAGE_TAR"
+rm "$TEMP_IMAGE_TAR"
+
+echo "Done building {{ service_name }}"
+{% endfor %}
+
+{% if config.plugins %}
+{% for plugin in config.plugins %}
+{% if plugin.name == "http-log" and plugin.config.http_endpoint %}
+echo "Using mendhak/http-https-echo:30 image for logger service"
+# Ensure logger image is pulled
+docker pull mendhak/http-https-echo:30
+{% endif %}
+{% endfor %}
+{% endif %}
+
+# List all images in minikube
+echo "Verifying images in minikube:"
+docker images | grep $NAMESPACE
+
+echo "============================================================"
+echo "Docker image building complete"
+echo "You can now deploy the services to minikube using ./deploy-to-k8s.sh" 

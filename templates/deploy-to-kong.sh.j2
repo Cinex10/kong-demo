@@ -1,0 +1,210 @@
+#!/bin/bash
+#
+# Deploy Kong configuration to a running Kong instance
+# For {{ project_name }}
+#
+
+# Configuration
+KONG_ADMIN_URL=${KONG_ADMIN_URL:-"http://localhost:8001"}
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+echo "Deploying Kong configuration for {{ project_name }} to ${KONG_ADMIN_URL}"
+echo "=================================================="
+
+# Function to check if a service exists
+service_exists() {
+  local name=$1
+  
+  status_code=$(curl -s -o /dev/null -w "%{http_code}" ${KONG_ADMIN_URL}/services/${name})
+  
+  if [ "$status_code" -eq 200 ]; then
+    return 0  # True
+  else
+    return 1  # False
+  fi
+}
+
+# Function to check if a route exists
+route_exists() {
+  local name=$1
+  
+  status_code=$(curl -s -o /dev/null -w "%{http_code}" ${KONG_ADMIN_URL}/routes/${name})
+  
+  if [ "$status_code" -eq 200 ]; then
+    return 0  # True
+  else
+    return 1  # False
+  fi
+}
+
+# Function to check if a consumer exists
+consumer_exists() {
+  local username=$1
+  
+  status_code=$(curl -s -o /dev/null -w "%{http_code}" ${KONG_ADMIN_URL}/consumers/${username})
+  
+  if [ "$status_code" -eq 200 ]; then
+    return 0  # True
+  else
+    return 1  # False
+  fi
+}
+
+# Function to create a Kong service
+create_service() {
+  local name=$1
+  local url=$2
+  
+  # Check if service already exists
+  if service_exists $name; then
+    echo "Service already exists: $name"
+    curl -s -X GET ${KONG_ADMIN_URL}/services/$name | jq -r '.id'
+    return
+  fi
+  
+  echo "Creating service: $name -> $url"
+  curl -s -X POST ${KONG_ADMIN_URL}/services \
+    -d name=$name \
+    -d url=$url | jq -r '.id'
+}
+
+# Function to create a Kong route
+create_route() {
+  local service_name=$1
+  local path=$2
+  local name=$3
+  
+  # Check if route already exists
+  if route_exists $name; then
+    echo "Route already exists: $name"
+    curl -s -X GET ${KONG_ADMIN_URL}/routes/$name | jq -r '.id'
+    return
+  fi
+  
+  echo "Creating route: $name ($path) -> $service_name"
+  curl -s -X POST ${KONG_ADMIN_URL}/services/$service_name/routes \
+    -d name=$name \
+    -d paths[]=$path | jq -r '.id'
+}
+
+# Function to create a Kong plugin
+create_plugin() {
+  local name=$1
+  local config=$2
+  
+  echo "Creating plugin: $name"
+  if [ -z "$config" ]; then
+    curl -s -X POST ${KONG_ADMIN_URL}/plugins \
+      -d name=$name | jq -r '.id'
+  else
+    curl -s -X POST ${KONG_ADMIN_URL}/plugins \
+      -d name=$name \
+      -d "$config" | jq -r '.id'
+  fi
+}
+
+# Function to create a Kong consumer
+create_consumer() {
+  local username=$1
+  
+  # Check if consumer already exists
+  if consumer_exists $username; then
+    echo "Consumer already exists: $username"
+    curl -s -X GET ${KONG_ADMIN_URL}/consumers/$username | jq -r '.id'
+    return
+  fi
+  
+  echo "Creating consumer: $username"
+  curl -s -X POST ${KONG_ADMIN_URL}/consumers \
+    -d username=$username | jq -r '.id'
+}
+
+# Function to create consumer credentials
+create_key_auth() {
+  local consumer=$1
+  local key=${2:-"demo-key-$consumer"}
+  
+  # Check if key already exists
+  exists=$(curl -s -X GET ${KONG_ADMIN_URL}/consumers/$consumer/key-auth | jq -r '.data | length')
+  if [ "$exists" -gt 0 ]; then
+    echo "Key-auth already exists for consumer: $consumer"
+    return
+  fi
+  
+  echo "Creating key-auth credential for $consumer: $key"
+  curl -s -X POST ${KONG_ADMIN_URL}/consumers/$consumer/key-auth \
+    -d key=$key | jq -r '.id'
+}
+
+# Check for jq
+if ! command -v jq &> /dev/null; then
+  echo "Error: jq is required but not installed"
+  echo "Please install jq using your package manager"
+  echo "For example: apt-get install jq or brew install jq"
+  exit 1
+fi
+
+# Check Kong connection
+echo "Checking connection to Kong Admin API..."
+if ! curl -s ${KONG_ADMIN_URL}/status > /dev/null; then
+  echo "Error: Cannot connect to Kong Admin API at ${KONG_ADMIN_URL}"
+  echo "Please ensure Kong is running and the Admin API is accessible"
+  exit 1
+fi
+echo "Kong connection successful"
+
+# Load configuration
+CONFIG_FILE="${DIR}/kong-config.json"
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo "Error: Configuration file not found: $CONFIG_FILE"
+  exit 1
+fi
+
+echo "Deploying services..."
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+{% for service_name, service in unique_services.items() %}
+service_id=$(create_service "{{ service_name }}" "{{ service.url }}")
+{% endfor %}
+
+echo "Deploying routes..."
+{% set unique_routes = {} %}
+{% for route in config.routes %}
+{% set _ = unique_routes.update({route.name: route}) %}
+{% endfor %}
+{% for route_name, route in unique_routes.items() %}
+route_id=$(create_route "{{ route.service_name }}" "{{ route.paths[0] }}" "{{ route_name }}")
+{% endfor %}
+
+echo "Deploying plugins..."
+{% set unique_plugins = {} %}
+{% for plugin in config.plugins %}
+{% set plugin_key = plugin.name + (plugin.config|string if plugin.config else '') %}
+{% set _ = unique_plugins.update({plugin_key: plugin}) %}
+{% endfor %}
+{% for plugin_key, plugin in unique_plugins.items() %}
+{% if plugin.config %}
+plugin_id=$(create_plugin "{{ plugin.name }}" "config={{ plugin.config | tojson | replace('"', '\\"') }}")
+{% else %}
+plugin_id=$(create_plugin "{{ plugin.name }}" "")
+{% endif %}
+{% endfor %}
+
+echo "Deploying consumers..."
+{% set unique_consumers = {} %}
+{% for consumer in config.consumers %}
+{% set _ = unique_consumers.update({consumer.username: consumer}) %}
+{% endfor %}
+{% for username, consumer in unique_consumers.items() %}
+consumer_id=$(create_consumer "{{ username }}")
+
+{% if consumer.auth_type == "key-auth" %}
+key_id=$(create_key_auth "{{ username }}")
+{% endif %}
+{% endfor %}
+
+echo "=================================================="
+echo "Deployment complete!"
+echo "To test your APIs, use: ${DIR}/test-api.sh" 

@@ -1,0 +1,131 @@
+# {{ project_name }} - Kubernetes Deployment
+
+This project provides a Kubernetes deployment for the {{ project_name }} application with a microservices architecture, using Kong API Gateway.
+
+## Prerequisites
+
+- Minikube (installed and running)
+- kubectl
+- Docker
+
+## Architecture
+
+The deployment consists of:
+
+{% if not assume_kong_running %}
+- Kong API Gateway (with PostgreSQL database)
+{% else %}
+- Assumes Kong API Gateway is already running elsewhere
+{% endif %}
+- Microservices:
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+{% for service_name, service in unique_services.items() %}
+  - {{ service_name }}{% if service.metadata and service.metadata.description %}: {{ service.metadata.description }}{% endif %}
+{% endfor %}
+
+## Getting Started
+
+### 1. Start Minikube
+
+```bash
+minikube start
+```
+
+### 2. Build Docker Images
+
+```bash
+./docker-build.sh
+```
+
+This script builds Docker images for all microservices and makes them available in the Minikube registry.
+
+### 3. Deploy to Kubernetes
+
+```bash
+./deploy-to-k8s.sh
+```
+
+This script:
+- Creates a namespace for the project
+{% if not assume_kong_running %}
+- Deploys PostgreSQL for Kong
+- Deploys Kong Gateway
+- Runs Kong migrations
+{% endif %}
+- Deploys all microservices
+- Configures Kong (services, routes, plugins, consumers)
+
+### 4. Access the API
+
+Once deployed, you can access the APIs through Kong Gateway:
+
+```bash
+# Get Kong Gateway URL
+KONG_IP=$(minikube ip)
+KONG_PORT=$(kubectl get service/kong-proxy -n {{ project_name | lower | replace(" ", "-") }} -o jsonpath='{.spec.ports[0].nodePort}')
+echo "Kong Gateway URL: http://$KONG_IP:$KONG_PORT"
+```
+
+### 5. Test the API
+
+Run the included test script:
+
+```bash
+./test-api.sh
+```
+
+## API Endpoints
+
+{% for service_name, service in unique_services.items() %}
+### {{ service_name }}
+
+{% for route in config.routes %}
+{% if route.service_name == service_name %}
+- `{{ route.paths[0] }}` - {{ route.name }}
+{% endif %}
+{% endfor %}
+
+{% endfor %}
+
+## Kong Configuration
+
+{% set has_plugins = config.plugins|length > 0 %}
+{% if has_plugins %}
+### Plugins
+
+{% for plugin in config.plugins %}
+- {{ plugin.name }}
+{% endfor %}
+
+{% endif %}
+
+{% set has_auth = False %}
+{% for consumer in config.consumers %}
+{% if consumer.auth_type == "key-auth" %}
+{% set has_auth = True %}
+{% endif %}
+{% endfor %}
+
+{% if has_auth %}
+### Authentication
+
+{% for consumer in config.consumers %}
+{% if consumer.auth_type == "key-auth" %}
+Consumer: {{ consumer.username }}
+- Authentication type: {{ consumer.auth_type }}
+- Key: demo-key-{{ consumer.username }}
+- Usage: `curl -H "apikey: demo-key-{{ consumer.username }}" http://$KONG_IP:$KONG_PORT/api`
+{% endif %}
+{% endfor %}
+{% endif %}
+
+## Cleanup
+
+To remove all resources:
+
+```bash
+kubectl delete namespace {{ project_name | lower | replace(" ", "-") }}
+``` 

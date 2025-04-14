@@ -1,0 +1,135 @@
+{% if not assume_kong_running %}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kong-migrations
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  template:
+    metadata:
+      name: kong-migrations
+    spec:
+      containers:
+      - name: kong-migrations
+        image: kong:3.4.0
+        env:
+        - name: KONG_DATABASE
+          value: postgres
+        - name: KONG_PG_HOST
+          value: postgres
+        - name: KONG_PG_USER
+          value: kong
+        - name: KONG_PG_PASSWORD
+          value: kongpass
+        command: [ "/bin/sh", "-c", "kong migrations bootstrap" ]
+      restartPolicy: OnFailure
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  selector:
+    matchLabels:
+      app: kong
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: kong
+    spec:
+      containers:
+      - name: kong
+        image: kong:3.4.0
+        env:
+        - name: KONG_DATABASE
+          value: postgres
+        - name: KONG_PG_HOST
+          value: postgres
+        - name: KONG_PG_USER
+          value: kong
+        - name: KONG_PG_PASSWORD
+          value: kongpass
+        - name: KONG_PROXY_ACCESS_LOG
+          value: /dev/stdout
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: /dev/stdout
+        - name: KONG_PROXY_ERROR_LOG
+          value: /dev/stderr
+        - name: KONG_ADMIN_ERROR_LOG
+          value: /dev/stderr
+        - name: KONG_ADMIN_LISTEN
+          value: 0.0.0.0:8001
+        - name: KONG_ADMIN_GUI_URL
+          value: http://localhost:8002
+        ports:
+        - name: proxy
+          containerPort: 8000
+        - name: proxy-ssl
+          containerPort: 8443
+        - name: admin-api
+          containerPort: 8001
+        - name: admin-api-ssl
+          containerPort: 8444
+        - name: admin-gui
+          containerPort: 8002
+        - name: admin-gui-ssl
+          containerPort: 8445
+        readinessProbe:
+          exec:
+            command: [ "/bin/sh", "-c", "kong health" ]
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: [ "/bin/sh", "-c", "kong health" ]
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-proxy
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  type: LoadBalancer
+  ports:
+  - name: proxy
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: proxy-ssl
+    port: 443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    app: kong
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-admin
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  type: NodePort
+  ports:
+  - name: admin-api
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+    nodePort: 30001
+  - name: admin-gui
+    port: 8002
+    targetPort: 8002
+    protocol: TCP
+    nodePort: 30002
+  selector:
+    app: kong
+{% endif %} 

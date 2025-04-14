@@ -1,114 +1,117 @@
 #!/bin/bash
+#
+# Setup script for {{ project_name }}
+# This script sets up the Kong demo environment with mock APIs{% if not assume_kong_running %} and Kong Gateway{% endif %}
+#
 
-# Setup script for {{ project_name }} Kong Demo
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
 
-echo "Starting Kong API Gateway demo for {{ project_name }}..."
+echo "Setting up {{ project_name }} environment..."
+echo "============================================="
+
+# Check Docker is running
+if ! docker info > /dev/null 2>&1; then
+  echo "Error: Docker is not running. Please start Docker and try again."
+  exit 1
+fi
+
+{% if assume_kong_running %}
+# Check if Kong is accessible
+echo "Checking Kong Gateway connectivity..."
+if ! curl -s http://localhost:8001/status > /dev/null 2>&1; then
+  echo "Warning: Cannot connect to Kong Gateway Admin API at http://localhost:8001"
+  echo "Make sure Kong is running and the Admin API is accessible"
+else
+  echo "Kong Gateway is accessible"
+fi
+{% endif %}
+
+echo "Starting containers..."
 docker-compose up -d
 
-echo "Waiting for Kong to start..."
-attempt=0
-max_attempts=30
-until curl -s http://localhost:8001 > /dev/null; do
-  attempt=$((attempt+1))
-  if [ $attempt -gt $max_attempts ]; then
-    echo "Kong did not start after $max_attempts attempts. Please check docker logs."
-    docker-compose logs kong
-    exit 1
-  fi
-  echo "Attempt $attempt/$max_attempts: Waiting for Kong API to be ready..." 
-  sleep 5
+echo "Waiting for services to start..."
+sleep 5
+
+{% if not assume_kong_running %}
+# Check if Kong is running
+if ! docker-compose ps kong | grep -q Up; then
+  echo "Error: Kong Gateway failed to start. Check docker-compose logs."
+  exit 1
+fi
+echo "Kong Gateway is running"
+
+# Configure Kong (wait for it to be ready)
+echo "Waiting for Kong to be ready..."
+while ! curl -s http://localhost:8001/status > /dev/null 2>&1; do
+  echo "Waiting for Kong Admin API..."
+  sleep 3
 done
 
-echo "Kong is available. Configuring services..."
-
-# First validate configuration
-echo "Validating configuration..."
-VALID_SERVICES=()
-
+echo "Configuring Kong Gateway..."
 {% for service in config.services %}
-# Create {{ service.name }} service
-if [ -z "{{ service.name }}" ]; then
-  echo "⚠️ Warning: Skipping service with empty name"
-  continue
-fi
-
 echo "Creating service: {{ service.name }}"
-curl -s -X POST http://localhost:8001/services \
+SERVICE_ID=$(curl -s -X POST http://localhost:8001/services \
   -d name={{ service.name }} \
-  -d url=http://{{ service.name }}:8080 > /dev/null
-
-if [ $? -eq 0 ]; then
-  VALID_SERVICES+=({{ service.name }})
-fi
-{% endfor %}
+  -d url=http://{{ service.name }}:8080 | jq -r '.id')
 
 {% for route in config.routes %}
-# Create route for {{ route.service_name }}
-if [ -z "{{ route.service_name }}" ]; then
-  echo "⚠️ Warning: Skipping route '{{ route.name }}' with empty service name"
-  continue
-fi
-
-# Check if service exists
-SERVICE_EXISTS=false
-for svc in "${VALID_SERVICES[@]}"; do
-  if [ "$svc" == "{{ route.service_name }}" ]; then
-    SERVICE_EXISTS=true
-    break
-  fi
-done
-
-if [ "$SERVICE_EXISTS" = false ]; then
-  echo "⚠️ Warning: Service '{{ route.service_name }}' does not exist, cannot create route '{{ route.name }}'"
-  continue
-fi
-
+{% if route.service_name == service.name %}
 echo "Creating route: {{ route.name }}"
-curl -s -X POST http://localhost:8001/services/{{ route.service_name }}/routes \
-  -d "paths[]={{ route.paths[0] }}" \
-  -d name={{ route.name }} > /dev/null
-
+ROUTE_ID=$(curl -s -X POST http://localhost:8001/services/{{ service.name }}/routes \
+  -d name={{ route.name }} \
+  -d 'paths[]={{ route.paths[0] }}' | jq -r '.id')
+{% endif %}
+{% endfor %}
 {% endfor %}
 
 {% for plugin in config.plugins %}
-# Add {{ plugin.name }} plugin
-echo "Adding plugin: {{ plugin.name }}"
-curl -s -X POST http://localhost:8001/plugins \
-  -d name={{ plugin.name }} \
+echo "Creating plugin: {{ plugin.name }}"
 {% if plugin.config %}
-{% for key, value in plugin.config.items() %}
-  -d "config.{{ key }}={{ value }}" {% if not loop.last %}\{% endif %}
-{% endfor %}
+PLUGIN_ID=$(curl -s -X POST http://localhost:8001/plugins \
+  -d name={{ plugin.name }} \
+  -d 'config={{ plugin.config | tojson | replace("\"", "\\\"") }}' | jq -r '.id')
+{% else %}
+PLUGIN_ID=$(curl -s -X POST http://localhost:8001/plugins \
+  -d name={{ plugin.name }} | jq -r '.id')
 {% endif %}
- > /dev/null
-
 {% endfor %}
 
 {% for consumer in config.consumers %}
-# Create {{ consumer.username }} consumer
 echo "Creating consumer: {{ consumer.username }}"
-curl -s -X POST http://localhost:8001/consumers \
-  -d username={{ consumer.username }} > /dev/null
+CONSUMER_ID=$(curl -s -X POST http://localhost:8001/consumers \
+  -d username={{ consumer.username }} | jq -r '.id')
 
-{% if config.auth_plugin.name == 'key-auth' %}
-# Add key-auth credentials
-echo "Adding key-auth credentials for {{ consumer.username }}"
-curl -s -X POST http://localhost:8001/consumers/{{ consumer.username }}/key-auth \
-  -d key=demo-key-{{ consumer.username }} > /dev/null
+{% if consumer.auth_type == "key-auth" %}
+echo "Creating key-auth for {{ consumer.username }}"
+KEY_ID=$(curl -s -X POST http://localhost:8001/consumers/{{ consumer.username }}/key-auth \
+  -d key=demo-key-{{ consumer.username }} | jq -r '.id')
 {% endif %}
 {% endfor %}
+{% else %}
+echo "Kong Gateway is assumed to be running separately"
+echo "To deploy configuration to Kong, run: ./deploy-to-kong.sh"
+{% endif %}
 
-echo "============================================================"
-echo "Kong API Gateway demo for {{ project_name }} is ready!"
-echo "============================================================"
-echo "Kong Admin API: http://localhost:8001"
-echo "Kong Manager (Admin UI): http://localhost:8002"
-echo "Kong Proxy: http://localhost:8000"
+echo "============================================="
+echo "Setup complete!"
 echo ""
-echo "Available API routes:"
+echo "You can access the following services:"
+{% if not assume_kong_running %}
+echo "- Kong Admin API: http://localhost:8001"
+echo "- Kong Admin GUI: http://localhost:8002"
+echo "- Kong Proxy: http://localhost:8000"
+{% endif %}
+{% for service in config.services %}
 {% for route in config.routes %}
-echo "- http://localhost:8000{{ route.paths[0] }}"
+{% if route.service_name == service.name %}
+echo "- {{ service.name }}: http://localhost:8000{{ route.paths[0] }}"
+{% endif %}
+{% endfor %}
 {% endfor %}
 echo ""
-echo "To test the configured routes, run:"
-echo "./test-api.sh"
+echo "To test the APIs, run: ./test-api.sh"
+{% if assume_kong_running %}
+echo "To deploy to Kong, run: ./deploy-to-kong.sh"
+{% endif %}
+echo "To shut down the environment, run: docker-compose down"

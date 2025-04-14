@@ -1,0 +1,90 @@
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+{% for service_name, service in unique_services.items() %}
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongService
+metadata:
+  name: {{ service_name | replace("_", "-") }}
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  url: http://{{ service_name | replace("_", "-") }}.{{ project_name | lower | replace(" ", "-") }}.svc.cluster.local:8080
+{% endfor %}
+
+{% set unique_routes = {} %}
+{% for route in config.routes %}
+{% set _ = unique_routes.update({route.name: route}) %}
+{% endfor %}
+
+{% for route_name, route in unique_routes.items() %}
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongRoute
+metadata:
+  name: {{ route_name | replace("_", "-") }}
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  paths:
+  - {{ route.paths[0] }}
+  methods:
+  - GET
+  - POST
+  - PUT
+  - DELETE
+  - PATCH
+  - OPTIONS
+  strip_path: true
+  preserve_host: false
+  protocols:
+  - http
+  - https
+  service: {{ route.service_name | replace("_", "-") }}
+{% endfor %}
+
+{% set unique_plugins = {} %}
+{% for plugin in config.plugins %}
+{% set plugin_key = plugin.name + (plugin.config|string if plugin.config else '') %}
+{% set _ = unique_plugins.update({plugin_key: plugin}) %}
+{% endfor %}
+
+{% for plugin_key, plugin in unique_plugins.items() %}
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: {{ plugin.name }}-plugin
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+{% if plugin.config %}
+config: {{ plugin.config | tojson }}
+{% endif %}
+plugin: {{ plugin.name }}
+{% endfor %}
+
+{% set unique_consumers = {} %}
+{% for consumer in config.consumers %}
+{% set _ = unique_consumers.update({consumer.username: consumer}) %}
+{% endfor %}
+
+{% for username, consumer in unique_consumers.items() %}
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongConsumer
+metadata:
+  name: {{ username | replace("_", "-") }}
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+username: {{ username }}
+
+{% if consumer.auth_type == "key-auth" %}
+---
+apiVersion: configuration.konghq.com/v1
+kind: KongConsumerKeyAuth
+metadata:
+  name: {{ username | replace("_", "-") }}-key
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+consumerRef: {{ username | replace("_", "-") }}
+key: demo-key-{{ username }}
+{% endif %}
+{% endfor %} 

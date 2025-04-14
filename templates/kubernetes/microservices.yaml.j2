@@ -1,0 +1,98 @@
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+{% for service_name, service in unique_services.items() %}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name | replace("_", "-") }}
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ service_name | replace("_", "-") }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ service_name | replace("_", "-") }}
+    spec:
+      containers:
+      - name: {{ service_name | replace("_", "-") }}
+        image: {{ project_name | lower | replace(" ", "-") }}/{{ service_name }}:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ service_name | replace("_", "-") }}
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: {{ service_name | replace("_", "-") }}
+{% endfor %}
+
+{% if config.plugins %}
+{% for plugin in config.plugins %}
+{% if plugin.name == "http-log" and plugin.config.http_endpoint %}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logger
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  selector:
+    matchLabels:
+      app: logger
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: logger
+    spec:
+      containers:
+      - name: logger
+        image: mendhak/http-https-echo:30
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logger
+  namespace: {{ project_name | lower | replace(" ", "-") }}
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+  selector:
+    app: logger
+{% endif %}
+{% endfor %}
+{% endif %} 

@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# Fix image pull issues for {{ project_name }} microservices
+#
+
+set -e
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$(dirname "$DIR")"
+NAMESPACE="{{ project_name | lower | replace(" ", "-") }}"
+
+echo "Fixing image pull issues for {{ project_name }} microservices"
+echo "============================================================"
+
+# Ensure we're using minikube's Docker daemon
+eval $(minikube docker-env)
+
+{% set unique_services = {} %}
+{% for service in config.services %}
+{% set _ = unique_services.update({service.name: service}) %}
+{% endfor %}
+
+# Delete existing problematic deployments
+echo "Deleting existing microservice deployments..."
+kubectl delete -f "$DIR/microservices.yaml" --ignore-not-found
+
+# Rebuild and ensure images are loaded properly
+{% for service_name, service in unique_services.items() %}
+echo "Rebuilding {{ service_name }} service..."
+cd "${PROJECT_DIR}/mock-apis/{{ service_name }}"
+docker build -t $NAMESPACE/{{ service_name }}:latest .
+
+# Save image to a tar file and explicitly load into minikube
+echo "Loading {{ service_name }} image directly into minikube..."
+TEMP_IMAGE_TAR="/tmp/$NAMESPACE-{{ service_name | replace('_', '-') }}.tar"
+docker save $NAMESPACE/{{ service_name }}:latest -o "$TEMP_IMAGE_TAR"
+minikube image load "$TEMP_IMAGE_TAR"
+rm "$TEMP_IMAGE_TAR"
+
+echo "Done rebuilding {{ service_name }}"
+{% endfor %}
+
+# Verify images exist in minikube
+echo "Verifying images in minikube:"
+docker images | grep $NAMESPACE
+
+# Apply the microservices manifest again
+echo "Redeploying microservices..."
+kubectl apply -f "$DIR/microservices.yaml"
+
+echo "Waiting for pods to start..."
+sleep 5
+
+echo "Current pod status:"
+kubectl get pods -n $NAMESPACE
+
+echo "============================================================"
+echo "Image fix completed. If you still see issues, run:"
+echo "  kubectl describe pods -n $NAMESPACE"
+echo "to get more detailed information about the errors." 
