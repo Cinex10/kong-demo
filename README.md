@@ -31,12 +31,13 @@ Follow these steps to set up and run your Groq-powered demo project.
 
 ### 1. Add Your Groq API Key
 
-Create a `.env` file in the root of your project and add your Groq API key:
+Create a `.env` file in the root of your project and add your Groq API key from here: https://console.groq.com/keys:
 
-### 2. Run the Project
 ```env
 GROQ_API_KEY=your_api_key_here
-
+```
+### 2. Run the Project
+```
 # Start an interactive demo setup
 python main.py
 
