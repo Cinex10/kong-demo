@@ -23,17 +23,42 @@ The code has been divided into several components, each with a clear responsibil
 - **DemoProjectGenerator** - Orchestrates the overall process
 
 ## Usage
+## 🚀 Getting Started
 
-```bash
-# Generate a demo with interactive prompts
+Follow these steps to set up and run your Groq-powered demo project.
+
+---
+
+### 1. Add Your Groq API Key
+
+Create a `.env` file in the root of your project and add your Groq API key:
+
+### 2. Run the Project
+```env
+GROQ_API_KEY=your_api_key_here
+
+# Start an interactive demo setup
 python main.py
 
-# Generate a demo from a config file
+# Generate a demo using a config file
 python main.py --config my-config.json
 
-# Deploy a generated demo to a running Kong instance
+# Deploy the generated demo to a running Kong instance
 python main.py --deploy http://localhost:8001 --project my-demo
 ```
+
+### 3. Navigate to Your Project Directory
+
+```
+cd output/<your-project-name>
+
+```
+## 4. Run the Setup Script
+
+```
+./setup.sh
+```
+
 
 ## Features
 
