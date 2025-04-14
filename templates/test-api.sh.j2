@@ -1,0 +1,138 @@
+#!/bin/bash
+# Test script for {{ project_name }} Kong API Gateway demo
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+    echo "jq is not installed. Trying to install it..."
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y jq
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y jq
+    elif command -v brew &> /dev/null; then
+        brew install jq
+    else
+        echo "Could not install jq automatically. JSON responses will not be formatted."
+        JQ_MISSING=true
+    fi
+else
+    JQ_MISSING=false
+fi
+
+# Function to format JSON if jq is available
+format_json() {
+    if [ "$JQ_MISSING" = true ]; then
+        cat
+    else
+        jq 2>/dev/null || echo "Response is not in JSON format"
+    fi
+}
+
+# Checking if Kong is running
+if ! curl -s http://localhost:8001 > /dev/null; then
+  echo "Error: Kong does not appear to be running"
+  exit 1
+fi
+
+echo "Testing Kong API Gateway..."
+echo "=========================="
+
+# Check Kong configuration
+echo "Checking Kong configuration..."
+SERVICES=$(curl -s http://localhost:8001/services | jq -r '.data[].name' 2>/dev/null)
+ROUTES=$(curl -s http://localhost:8001/routes | jq -r '.data[].name' 2>/dev/null)
+
+# Display Kong configuration
+echo "Configured services:"
+echo "$SERVICES" | sed 's/^/- /'
+echo 
+echo "Configured routes:"
+echo "$ROUTES" | sed 's/^/- /'
+echo
+
+# Check Docker service connectivity
+echo "Checking Docker service connectivity..."
+{% for service in config.services %}
+echo "Testing connection to {{ service.name }} service..."
+if ! docker ps | grep -q "{{ project_name }}-kong-1"; then
+  echo "⚠️  Warning: Kong container is not running. Make sure Kong is up before testing connectivity."
+  echo
+else
+  DOCKER_TEST=$(docker exec {{ project_name }}-kong-1 curl -s --connect-timeout 5 http://{{ service.name }}:8080/health 2>&1)
+  if [[ "$DOCKER_TEST" == *"connection refused"* ]] || [[ "$DOCKER_TEST" == *"Name or service not known"* ]] || [[ "$DOCKER_TEST" == *"Failed to connect"* ]]; then
+    echo "⚠️  Warning: Could not connect to {{ service.name }} service from Kong container"
+    echo "   Error: $DOCKER_TEST" 
+    echo "   This might cause API requests to fail."
+    echo
+  else
+    echo "✅ Connection to {{ service.name }} service successful!"
+    echo "$DOCKER_TEST" | format_json
+    echo
+  fi
+fi
+{% endfor %}
+
+echo "Testing API routes..."
+echo "===================="
+
+{% set auth_plugin = none %}
+{% for plugin in config.plugins %}
+{% if plugin.name in ['key-auth', 'jwt', 'oauth2', 'basic-auth'] %}
+{% set auth_plugin = plugin %}
+{% endif %}
+{% endfor %}
+
+{% for route in config.routes %}
+echo
+echo "Testing route: {{ route.paths[0] }} ({{ route.service_name }})"
+echo "-------------------------------------------------------"
+
+{% if auth_plugin and auth_plugin.name == 'key-auth' %}
+# With authentication
+echo "Get all items (with valid API key):"
+RESPONSE=$(curl -s -X GET http://localhost:8000{{ route.paths[0] }}/items \
+  -H "apikey: demo-key-{{ config.consumers[0].username }}")
+echo "$RESPONSE" | format_json
+
+echo -e "\nGet service info (with valid API key):"
+RESPONSE=$(curl -s -X GET http://localhost:8000{{ route.paths[0] }}/info \
+  -H "apikey: demo-key-{{ config.consumers[0].username }}")
+echo "$RESPONSE" | format_json
+
+echo -e "\nWithout API key (should fail with 401):"
+curl -i -X GET http://localhost:8000{{ route.paths[0] }}/items
+{% else %}
+# No authentication
+echo "Get all items:"
+RESPONSE=$(curl -s -X GET http://localhost:8000{{ route.paths[0] }}/items)
+echo "$RESPONSE" | format_json
+
+echo -e "\nGet specific item (ID: 1):"
+RESPONSE=$(curl -s -X GET http://localhost:8000{{ route.paths[0] }}/items/1)
+echo "$RESPONSE" | format_json
+
+echo -e "\nService info:"
+RESPONSE=$(curl -s -X GET http://localhost:8000{{ route.paths[0] }}/info)
+echo "$RESPONSE" | format_json
+
+echo -e "\nEcho request:"
+RESPONSE=$(curl -s -X POST http://localhost:8000{{ route.paths[0] }}/echo \
+  -H "Content-Type: application/json" \
+  -d '{"test": "data"}')
+echo "$RESPONSE" | format_json
+{% endif %}
+
+{% endfor %}
+
+echo
+echo "Testing Kong Admin API"
+echo "======================"
+echo "API Information:"
+curl -s http://localhost:8001 | jq '.plugins.available_on_server' 2>/dev/null || echo "Response is not JSON format"
+
+echo -e "\nStatus Information:"
+curl -s http://localhost:8001/status | jq 2>/dev/null || echo "Response is not JSON format"
+
+echo
+echo "Tests completed."
+echo "You can access Kong Admin API at: http://localhost:8001"
+echo "You can access Kong Manager UI at: http://localhost:8002"

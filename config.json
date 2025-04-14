@@ -1,0 +1,27 @@
+{
+  "services": [
+    {
+      "name": "ecommerce-service",
+      "url": "http://my-api:8080",
+      "metadata": {
+        "business_type": "ecommerce",
+        "business_params": {
+          "features": [
+            "inventory-management"
+          ]
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "service_name": "ecommerce-service",
+      "paths": [
+        "/ecommerce"
+      ],
+      "name": "ecommerce-route-1"
+    }
+  ],
+  "plugins": [],
+  "consumers": []
+}

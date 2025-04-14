@@ -1,0 +1,114 @@
+#!/bin/bash
+
+# Setup script for {{ project_name }} Kong Demo
+
+echo "Starting Kong API Gateway demo for {{ project_name }}..."
+docker-compose up -d
+
+echo "Waiting for Kong to start..."
+attempt=0
+max_attempts=30
+until curl -s http://localhost:8001 > /dev/null; do
+  attempt=$((attempt+1))
+  if [ $attempt -gt $max_attempts ]; then
+    echo "Kong did not start after $max_attempts attempts. Please check docker logs."
+    docker-compose logs kong
+    exit 1
+  fi
+  echo "Attempt $attempt/$max_attempts: Waiting for Kong API to be ready..." 
+  sleep 5
+done
+
+echo "Kong is available. Configuring services..."
+
+# First validate configuration
+echo "Validating configuration..."
+VALID_SERVICES=()
+
+{% for service in config.services %}
+# Create {{ service.name }} service
+if [ -z "{{ service.name }}" ]; then
+  echo "⚠️ Warning: Skipping service with empty name"
+  continue
+fi
+
+echo "Creating service: {{ service.name }}"
+curl -s -X POST http://localhost:8001/services \
+  -d name={{ service.name }} \
+  -d url=http://{{ service.name }}:8080 > /dev/null
+
+if [ $? -eq 0 ]; then
+  VALID_SERVICES+=({{ service.name }})
+fi
+{% endfor %}
+
+{% for route in config.routes %}
+# Create route for {{ route.service_name }}
+if [ -z "{{ route.service_name }}" ]; then
+  echo "⚠️ Warning: Skipping route '{{ route.name }}' with empty service name"
+  continue
+fi
+
+# Check if service exists
+SERVICE_EXISTS=false
+for svc in "${VALID_SERVICES[@]}"; do
+  if [ "$svc" == "{{ route.service_name }}" ]; then
+    SERVICE_EXISTS=true
+    break
+  fi
+done
+
+if [ "$SERVICE_EXISTS" = false ]; then
+  echo "⚠️ Warning: Service '{{ route.service_name }}' does not exist, cannot create route '{{ route.name }}'"
+  continue
+fi
+
+echo "Creating route: {{ route.name }}"
+curl -s -X POST http://localhost:8001/services/{{ route.service_name }}/routes \
+  -d "paths[]={{ route.paths[0] }}" \
+  -d name={{ route.name }} > /dev/null
+
+{% endfor %}
+
+{% for plugin in config.plugins %}
+# Add {{ plugin.name }} plugin
+echo "Adding plugin: {{ plugin.name }}"
+curl -s -X POST http://localhost:8001/plugins \
+  -d name={{ plugin.name }} \
+{% if plugin.config %}
+{% for key, value in plugin.config.items() %}
+  -d "config.{{ key }}={{ value }}" {% if not loop.last %}\{% endif %}
+{% endfor %}
+{% endif %}
+ > /dev/null
+
+{% endfor %}
+
+{% for consumer in config.consumers %}
+# Create {{ consumer.username }} consumer
+echo "Creating consumer: {{ consumer.username }}"
+curl -s -X POST http://localhost:8001/consumers \
+  -d username={{ consumer.username }} > /dev/null
+
+{% if config.auth_plugin.name == 'key-auth' %}
+# Add key-auth credentials
+echo "Adding key-auth credentials for {{ consumer.username }}"
+curl -s -X POST http://localhost:8001/consumers/{{ consumer.username }}/key-auth \
+  -d key=demo-key-{{ consumer.username }} > /dev/null
+{% endif %}
+{% endfor %}
+
+echo "============================================================"
+echo "Kong API Gateway demo for {{ project_name }} is ready!"
+echo "============================================================"
+echo "Kong Admin API: http://localhost:8001"
+echo "Kong Manager (Admin UI): http://localhost:8002"
+echo "Kong Proxy: http://localhost:8000"
+echo ""
+echo "Available API routes:"
+{% for route in config.routes %}
+echo "- http://localhost:8000{{ route.paths[0] }}"
+{% endfor %}
+echo ""
+echo "To test the configured routes, run:"
+echo "./test-api.sh"
