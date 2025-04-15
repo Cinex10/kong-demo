@@ -1,0 +1,9 @@
+{
+  "project_name": "kong",
+  "api": {
+    "name": null,
+    "path": null,
+    "upstream_url": null
+  },
+  "plugins": []
+}

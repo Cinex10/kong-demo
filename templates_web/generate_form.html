@@ -1,50 +1,566 @@
 {% extends "base.html" %}
 {% block title %}Générateur Interactif{% endblock %}
+
 {% block content %}
-    <div class="card shadow-lg">
-        <div class="card-header bg-primary text-white">
-            <h4 class="mb-0">Générateur Interactif</h4>
+<div class="card shadow-lg">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Kong Demo Generator - Configuration Interactive</h4>
+    </div>
+    <div class="card-body">
+        <!-- Stepper Navigation -->
+        <ul class="nav nav-pills nav-justified mb-4" id="stepperNav">
+            <li class="nav-item">
+                <a class="nav-link active" id="step1-tab" href="#step1">Projet</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="step2-tab" href="#step2">Services</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="step3-tab" href="#step3">Plugins & Sécurité</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="step4-tab" href="#step4">Résultat</a>
+            </li>
+        </ul>
+
+        <!-- Step 1: Project Info -->
+        <div id="step1" class="stepper-pane active">
+            <h5 class="card-title">Informations du Projet</h5>
+            <div class="mb-3">
+                <label for="projectName" class="form-label">Nom du projet:</label>
+                <input type="text" class="form-control" id="projectName" placeholder="Mon Projet Kong" required>
+            </div>
+            <div class="d-flex justify-content-end mt-4">
+                <button class="btn btn-primary" onclick="nextStep(1, 2)">Suivant</button>
+            </div>
         </div>
-        <div class="card-body">
-            <form method="post" action="{{ url_for('generate') }}">
-                <div class="mb-3">
-                    <label for="project_name" class="form-label">Nom du Projet</label>
-                    <input type="text" class="form-control" id="project_name" name="project_name" placeholder="ex: demo-finance-api" required>
+        
+        <!-- Step 2: Services Configuration -->
+        <div id="step2" class="stepper-pane">
+            <h5 class="card-title">Configuration des Services Backend</h5>
+            <div class="mb-3">
+                <label for="numServices" class="form-label">Nombre de services à configurer:</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="numServices" min="1" value="1">
+                    <button class="btn btn-outline-primary" onclick="generateServiceForms()">Configurer</button>
                 </div>
-
-                <div class="mb-3">
-                    <label for="api_name" class="form-label">Nom de l'API</label>
-                    <input type="text" class="form-control" id="api_name" name="api_name" placeholder="ex: finance-api" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="api_path" class="form-label">Chemin de l'API</label>
-                    <input type="text" class="form-control" id="api_path" name="api_path" placeholder="/api/v1" required>
-                </div>
-
-                <div class="mb-3">
-                    <label for="upstream_url" class="form-label">URL Upstream</label>
-                    <input type="url" class="form-control" id="upstream_url" name="upstream_url" placeholder="http://backend-service:8000" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Plugins Kong</label>
-                    <div class="row">
-                        {% for plugin in ["rate-limiting", "key-auth", "cors", "request-transformer"] %}
-                        <div class="col-md-6">
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" name="plugins" value="{{ plugin }}" id="{{ plugin }}">
-                                <label class="form-check-label" for="{{ plugin }}">{{ plugin.replace("-", " ").title() }}</label>
-                            </div>
+            </div>
+            
+            <div id="services-container" class="mb-3">
+                <!-- Service forms will be added here -->
+            </div>
+            
+            <div class="d-flex justify-content-between mt-4" id="services-nav" style="display: none !important;">
+                <button class="btn btn-secondary" onclick="prevStep(2, 1)">Retour</button>
+                <button class="btn btn-primary" onclick="nextStep(2, 3)">Suivant</button>
+            </div>
+        </div>
+        
+        <!-- Step 3: Plugins & Security -->
+        <div id="step3" class="stepper-pane">
+            <h5 class="card-title">Sécurité et Plugins</h5>
+            
+            <!-- Authentication -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">Authentification</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="authType" class="form-label">Type d'authentification:</label>
+                        <select class="form-select" id="authType">
+                            <option value="key-auth">key-auth</option>
+                            <option value="jwt">jwt</option>
+                            <option value="oauth2">oauth2</option>
+                            <option value="basic-auth">basic-auth</option>
+                            <option value="none">aucune</option>
+                        </select>
+                    </div>
+                    
+                    <div id="consumer-section">
+                        <div class="mb-3">
+                            <label for="consumerUsername" class="form-label">Nom d'utilisateur du consommateur:</label>
+                            <input type="text" class="form-control" id="consumerUsername" placeholder="demo-user" value="demo-user">
                         </div>
-                        {% endfor %}
                     </div>
                 </div>
-
-                <div class="text-end">
-                    <button type="submit" class="btn btn-primary">Générer</button>
+            </div>
+            
+            <!-- Rate Limiting -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">Limitation de Débit</div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableRateLimit" onchange="toggleRateLimitOptions()">
+                        <label class="form-check-label" for="enableRateLimit">Activer la limitation de débit</label>
+                    </div>
+                    
+                    <div id="rate-limit-options" style="display: none;">
+                        <div class="mb-3">
+                            <label for="requestsPerMinute" class="form-label">Requêtes par minute:</label>
+                            <input type="number" class="form-control" id="requestsPerMinute" value="60" min="1">
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
+            
+            <!-- Logging -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">Journalisation</div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableLogging" onchange="toggleLoggingOptions()">
+                        <label class="form-check-label" for="enableLogging">Activer la journalisation des requêtes/réponses</label>
+                    </div>
+                    
+                    <div id="logging-options" style="display: none;">
+                        <div class="mb-3">
+                            <label for="logEndpoint" class="form-label">URL du point de terminaison de journalisation:</label>
+                            <input type="text" class="form-control" id="logEndpoint" value="http://logger:3000/log" placeholder="http://logger:3000/log">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CORS -->
+            <div class="card mb-3">
+                <div class="card-header bg-light">CORS</div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="enableCORS" onchange="toggleCORSOptions()">
+                        <label class="form-check-label" for="enableCORS">Activer CORS</label>
+                    </div>
+                    
+                    <div id="cors-options" style="display: none;">
+                        <div class="mb-3">
+                            <label for="allowedOrigins" class="form-label">Origines autorisées (séparées par des virgules):</label>
+                            <input type="text" class="form-control" id="allowedOrigins" value="*" placeholder="*">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-between mt-4">
+                <button class="btn btn-secondary" onclick="prevStep(3, 2)">Retour</button>
+                <button class="btn btn-primary" onclick="generateConfig()">Générer la Configuration</button>
+            </div>
+        </div>
+        
+        <!-- Step 4: Results -->
+        <div id="step4" class="stepper-pane">
+            <h5 class="card-title">Configuration Kong</h5>
+            <p>Voici votre configuration Kong:</p>
+            <div class="bg-light p-3 mb-3 border rounded">
+                <pre id="config-result" class="m-0" style="white-space: pre-wrap;"></pre>
+            </div>
+            
+            <div class="d-flex justify-content-between mt-4">
+                <button class="btn btn-secondary" onclick="prevStep(4, 3)">Retour</button>
+                <button class="btn btn-success" onclick="saveConfig()">Télécharger la Configuration</button>
+            </div>
         </div>
     </div>
+</div>
+
+<form id="save-config-form" method="post" action="{{ url_for('generate') }}" style="display: none;">
+    <input type="hidden" name="config_data" id="config_data">
+    <input type="hidden" name="project_name" id="form_project_name">
+    {# <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> #}
+</form>
+
+<!-- Custom CSS for stepper -->
+<style>
+    .stepper-pane {
+        display: none;
+    }
+    .stepper-pane.active {
+        display: block;
+    }
+    .service-container, .route-container {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    #stepperNav .nav-link {
+        border-radius: 0;
+        padding: 0.75rem 0;
+    }
+    #stepperNav .nav-link.active {
+        background-color: #0d6efd;
+    }
+</style>
+
+<!-- JavaScript for stepper functionality -->
+<script>
+    // Global configuration object
+    let kongConfig = {
+        services: [],
+        plugins: [],
+        consumers: []
+    };
+    
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set up stepper tabs
+        document.querySelectorAll('#stepperNav .nav-link').forEach(function(tab) {
+            tab.addEventListener('click', function(e) {
+                e.preventDefault();
+                // Only allow clicking on tabs that have been enabled
+                if (!this.classList.contains('disabled')) {
+                    const targetId = this.getAttribute('href').substring(1);
+                    showStep(targetId);
+                }
+            });
+        });
+    });
+    
+    // Navigation functions
+    function nextStep(current, next) {
+        document.getElementById(`step${current}`).classList.remove('active');
+        document.getElementById(`step${next}`).classList.add('active');
+        
+        // Update nav tabs
+        document.getElementById(`step${current}-tab`).classList.remove('active');
+        document.getElementById(`step${next}-tab`).classList.add('active');
+        document.getElementById(`step${next}-tab`).classList.remove('disabled');
+        
+        if (current === 1) {
+            kongConfig.project_name = document.getElementById('projectName').value || 'Kong Demo';
+        }
+
+        // Scroll to top of form
+        document.querySelector('.card-body').scrollTop = 0;
+    }
+    
+    function prevStep(current, prev) {
+        document.getElementById(`step${current}`).classList.remove('active');
+        document.getElementById(`step${prev}`).classList.add('active');
+        
+        // Update nav tabs
+        document.getElementById(`step${current}-tab`).classList.remove('active');
+        document.getElementById(`step${prev}-tab`).classList.add('active');
+
+        // Scroll to top of form
+        document.querySelector('.card-body').scrollTop = 0;
+    }
+    
+    function showStep(stepId) {
+        // Hide all steps
+        document.querySelectorAll('.stepper-pane').forEach(function(step) {
+            step.classList.remove('active');
+        });
+        
+        // Show the target step
+        document.getElementById(stepId).classList.add('active');
+        
+        // Update nav tabs
+        document.querySelectorAll('#stepperNav .nav-link').forEach(function(tab) {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`#stepperNav .nav-link[href="#${stepId}"]`).classList.add('active');
+    }
+    
+    // Generate service forms based on number input
+    function generateServiceForms() {
+        const numServices = parseInt(document.getElementById('numServices').value);
+        const container = document.getElementById('services-container');
+        container.innerHTML = '';
+        
+        for (let i = 0; i < numServices; i++) {
+            const serviceDiv = document.createElement('div');
+            serviceDiv.className = 'service-container';
+            serviceDiv.innerHTML = `
+                <h6 class="mb-3">Service ${i+1}</h6>
+                <div class="mb-3">
+                    <label for="serviceName${i}" class="form-label">Nom du service:</label>
+                    <input type="text" class="form-control" id="serviceName${i}" placeholder="service_${i+1}">
+                </div>
+                
+                <div class="mb-3">
+                    <label for="serviceUrl${i}" class="form-label">URL du service:</label>
+                    <input type="text" class="form-control" id="serviceUrl${i}" placeholder="http://my-api:8080">
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Type de logique métier pour la génération d'API Mock</h6>
+                    <label for="businessType${i}" class="form-label">Type métier:</label>
+                    <select class="form-select" id="businessType${i}" onchange="updateBusinessParams(${i})">
+                        <option value="generic">générique</option>
+                        <option value="insurance">assurance</option>
+                        <option value="insurance-policy">police d'assurance</option>
+                        <option value="insurance-claims">réclamations d'assurance</option>
+                        <option value="ecommerce">e-commerce</option>
+                        <option value="ecommerce-product">produit e-commerce</option>
+                        <option value="ecommerce-order">commande e-commerce</option>
+                        <option value="health-insurance">assurance santé</option>
+                        <option value="auto-insurance">assurance auto</option>
+                    </select>
+                </div>
+                
+                <div id="businessParams${i}" class="mb-3">
+                    <!-- Parameters will be added dynamically -->
+                </div>
+                
+                <div class="mb-3">
+                    <h6>Routes</h6>
+                    <label for="numRoutes${i}" class="form-label">Nombre de routes:</label>
+                    <div class="input-group mb-3">
+                        <input type="number" class="form-control" id="numRoutes${i}" min="1" value="1">
+                        <button class="btn btn-outline-secondary" onclick="generateRouteForms(${i})">Ajouter les Routes</button>
+                    </div>
+                </div>
+                
+                <div id="routes-container-${i}"></div>
+            `;
+            container.appendChild(serviceDiv);
+            updateBusinessParams(i);
+        }
+        
+        document.getElementById('services-nav').style.display = 'flex';
+    }
+    
+    // Generate route forms for a service
+    function generateRouteForms(serviceIndex) {
+        const numRoutes = parseInt(document.getElementById(`numRoutes${serviceIndex}`).value);
+        const container = document.getElementById(`routes-container-${serviceIndex}`);
+        container.innerHTML = '';
+        
+        for (let i = 0; i < numRoutes; i++) {
+            const routeDiv = document.createElement('div');
+            routeDiv.className = 'route-container';
+            routeDiv.innerHTML = `
+                <div class="mb-3">
+                    <label for="routePath${serviceIndex}_${i}" class="form-label">Chemin de la route ${i+1}:</label>
+                    <input type="text" class="form-control" id="routePath${serviceIndex}_${i}" placeholder="/api/users">
+                </div>
+            `;
+            container.appendChild(routeDiv);
+        }
+    }
+    
+    // Update business parameters based on selected business type
+    function updateBusinessParams(serviceIndex) {
+        const businessType = document.getElementById(`businessType${serviceIndex}`).value;
+        const container = document.getElementById(`businessParams${serviceIndex}`);
+        container.innerHTML = '';
+        
+        // Features for different business types
+        let features = [];
+        
+        if (businessType.includes('insurance')) {
+            // Insurance policy type selection
+            const policyTypes = ["auto", "health", "home", "life", "travel"];
+            let policyTypeHtml = `
+                <h6 class="mt-3">Paramètres d'Assurance</h6>
+                <div class="mb-3">
+                    <label for="policyType${serviceIndex}" class="form-label">Type de police:</label>
+                    <select class="form-select" id="policyType${serviceIndex}">
+                        ${policyTypes.map((type, idx) => `<option value="${type}">${type}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+            container.innerHTML += policyTypeHtml;
+            
+            features = ["basic", "premium-calculation", "risk-assessment", "document-management", "claims-integration"];
+        } 
+        else if (businessType.includes('ecommerce')) {
+            if (businessType.includes('product')) {
+                // Product type selection for ecommerce-product
+                const productTypes = ["electronics", "clothing", "groceries", "furniture", "books"];
+                let productTypeHtml = `
+                    <h6 class="mt-3">Paramètres E-commerce</h6>
+                    <div class="mb-3">
+                        <label for="productType${serviceIndex}" class="form-label">Type de produit:</label>
+                        <select class="form-select" id="productType${serviceIndex}">
+                            ${productTypes.map((type, idx) => `<option value="${type}">${type}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+                container.innerHTML += productTypeHtml;
+            }
+            
+            features = ["basic", "search", "recommendations", "inventory-management", "user-accounts", "reviews", "ratings"];
+        } 
+        else {
+            // Generic business types
+            features = ["basic", "advanced-validation", "authentication", "pagination", "filtering", "sorting", "caching"];
+        }
+        
+        // Add feature checkboxes
+        let featuresHtml = `
+            <h6 class="mt-3">Fonctionnalités</h6>
+            <div class="mb-3" id="features${serviceIndex}">
+                ${features.map((feature, idx) => `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="feature${serviceIndex}_${idx}" value="${feature}" ${idx === 0 ? 'checked' : ''}>
+                        <label class="form-check-label" for="feature${serviceIndex}_${idx}">${feature}</label>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        container.innerHTML += featuresHtml;
+    }
+    
+    // Toggle plugin options visibility
+    function toggleRateLimitOptions() {
+        const enabled = document.getElementById('enableRateLimit').checked;
+        document.getElementById('rate-limit-options').style.display = enabled ? 'block' : 'none';
+    }
+    
+    function toggleLoggingOptions() {
+        const enabled = document.getElementById('enableLogging').checked;
+        document.getElementById('logging-options').style.display = enabled ? 'block' : 'none';
+    }
+    
+    function toggleCORSOptions() {
+        const enabled = document.getElementById('enableCORS').checked;
+        document.getElementById('cors-options').style.display = enabled ? 'block' : 'none';
+    }
+    
+    // Collect service data
+    function collectServiceData() {
+        kongConfig.services = [];
+        const numServices = parseInt(document.getElementById('numServices').value);
+        
+        for (let i = 0; i < numServices; i++) {
+            const serviceName = document.getElementById(`serviceName${i}`).value || `service_${i+1}`;
+            const serviceUrl = document.getElementById(`serviceUrl${i}`).value || 'http://mockbin:8080';
+            const businessType = document.getElementById(`businessType${i}`).value;
+            
+            // Collect business parameters
+            const businessParams = {};
+            
+            // Collect policy type for insurance
+            if (businessType.includes('insurance') && document.getElementById(`policyType${i}`)) {
+                businessParams.policy_type = document.getElementById(`policyType${i}`).value;
+            }
+            
+            // Collect product type for ecommerce
+            if (businessType.includes('product') && document.getElementById(`productType${i}`)) {
+                businessParams.product_type = document.getElementById(`productType${i}`).value;
+            }
+            
+            // Collect selected features
+            const featuresContainer = document.getElementById(`features${i}`);
+            const featureCheckboxes = featuresContainer.querySelectorAll('input[type="checkbox"]:checked');
+            businessParams.features = Array.from(featureCheckboxes).map(cb => cb.value);
+            
+            // Collect routes
+            const routes = [];
+            const numRoutes = parseInt(document.getElementById(`numRoutes${i}`).value);
+            
+            for (let j = 0; j < numRoutes; j++) {
+                const routePathInput = document.getElementById(`routePath${i}_${j}`);
+                if (routePathInput) {
+                    const routePath = routePathInput.value || `/${serviceName}`;
+                    routes.push(routePath);
+                }
+            }
+            
+            kongConfig.services.push({
+                name: serviceName,
+                url: serviceUrl,
+                metadata: {
+                    business_type: businessType,
+                    business_params: businessParams
+                },
+                routes: routes.map(path => ({
+                    paths: [path],
+                    strip_path: true
+                }))
+            });
+        }
+    }
+    
+    // Collect plugin data
+    function collectPluginData() {
+        kongConfig.plugins = [];
+        
+        // Authentication plugin
+        const authType = document.getElementById('authType').value;
+        if (authType !== 'none') {
+            kongConfig.plugins.push({
+                name: authType,
+                enabled: true,
+                config: {}
+            });
+            
+            // Add consumer with auth credentials
+            const username = document.getElementById('consumerUsername').value || 'demo-user';
+            kongConfig.consumers.push({
+                username: username,
+                credentials: [{
+                    type: authType
+                }]
+            });
+        }
+        
+        // Rate limiting plugin
+        if (document.getElementById('enableRateLimit').checked) {
+            const requestsPerMinute = parseInt(document.getElementById('requestsPerMinute').value) || 60;
+            kongConfig.plugins.push({
+                name: 'rate-limiting',
+                enabled: true,
+                config: {
+                    minute: requestsPerMinute,
+                    policy: 'local'
+                }
+            });
+        }
+        
+        // Logging plugin
+        if (document.getElementById('enableLogging').checked) {
+            const logEndpoint = document.getElementById('logEndpoint').value || 'http://logger:3000/log';
+            kongConfig.plugins.push({
+                name: 'http-log',
+                enabled: true,
+                config: {
+                    http_endpoint: logEndpoint,
+                    method: 'POST',
+                    timeout: 10000,
+                    keepalive: 60000
+                }
+            });
+        }
+        
+        // CORS plugin
+        if (document.getElementById('enableCORS').checked) {
+            const origins = document.getElementById('allowedOrigins').value || '*';
+            const originsList = origins.split(',').map(o => o.trim());
+            
+            kongConfig.plugins.push({
+                name: 'cors',
+                enabled: true,
+                config: {
+                    origins: originsList,
+                    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+                    headers: ['Content-Type', 'Authorization'],
+                    exposed_headers: ['X-Auth-Token'],
+                    max_age: 3600,
+                    credentials: true
+                }
+            });
+        }
+    }
+    
+    // Generate final configuration
+    function generateConfig() {
+        collectServiceData();
+        collectPluginData();
+        
+        // Display the configuration
+        document.getElementById('config-result').textContent = JSON.stringify(kongConfig, null, 2);
+        
+        // Show the results section
+        nextStep(3, 4);
+    }
+    
+    // Save configuration via form submission
+    function saveConfig() {
+        const projectName = kongConfig.project_name || 'kong-config';
+        document.getElementById('config_data').value = JSON.stringify(kongConfig);
+        document.getElementById('form_project_name').value = projectName;
+        document.getElementById('save-config-form').submit();
+    }
+</script>
 {% endblock %}
