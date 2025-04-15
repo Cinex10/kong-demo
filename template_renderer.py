@@ -43,30 +43,40 @@ class TemplateRenderer:
         template = self.env.get_template(template_name)
         return template.render(**context)
     
-    def render_docker_compose(self, project_name: str, config: Dict[str, Any]) -> str:
+    def render_docker_compose(self, project_name: str, config: Dict[str, Any], assume_kong_running: bool = False) -> str:
         """Render the Docker Compose template"""
         return self.render_template("docker-compose.yaml.j2", {
             "project_name": project_name,
-            "config": config
+            "config": config,
+            "assume_kong_running": assume_kong_running
         })
     
-    def render_setup_script(self, project_name: str, config: Dict[str, Any]) -> str:
+    def render_setup_script(self, project_name: str, config: Dict[str, Any], assume_kong_running: bool = False) -> str:
         """Render the setup script template"""
         return self.render_template("setup.sh.j2", {
             "project_name": project_name,
-            "config": config
+            "config": config,
+            "assume_kong_running": assume_kong_running
         })
     
-    def render_readme(self, project_name: str, config: Dict[str, Any]) -> str:
+    def render_readme(self, project_name: str, config: Dict[str, Any], assume_kong_running: bool = False) -> str:
         """Render the README template"""
         return self.render_template("README.md.j2", {
             "project_name": project_name,
-            "config": config
+            "config": config,
+            "assume_kong_running": assume_kong_running
         })
     
     def render_test_script(self, project_name: str, config: Dict[str, Any]) -> str:
         """Render the test API script template"""
         return self.render_template("test-api.sh.j2", {
+            "project_name": project_name,
+            "config": config
+        })
+    
+    def render_deploy_script(self, project_name: str, config: Dict[str, Any]) -> str:
+        """Render the deployment script template"""
+        return self.render_template("deploy-to-kong.sh.j2", {
             "project_name": project_name,
             "config": config
         })

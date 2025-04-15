@@ -56,7 +56,7 @@ class FileSystemManager:
         self.ensure_directory(mock_dir)
         return mock_dir
         
-    def create_project_files(self, project_name: str, config: ConfigurationManager, renderer: TemplateRenderer) -> None:
+    def create_project_files(self, project_name: str, config: ConfigurationManager, renderer: TemplateRenderer, assume_kong_running: bool = False) -> None:
         """Create all project files using the provided configuration and renderer"""
         # Set up base project directory
         project_dir = self.setup_project_directory(project_name)
@@ -78,15 +78,15 @@ class FileSystemManager:
             config.to_declarative_config()
         )
         
-        # Create Docker Compose file
-        docker_compose = renderer.render_docker_compose(project_name, config.config)
+        # Create Docker Compose file with or without Kong based on assume_kong_running
+        docker_compose = renderer.render_docker_compose(project_name, config.config, assume_kong_running)
         self.write_file(
             os.path.join(project_dir, "docker-compose.yaml"), 
             docker_compose
         )
         
-        # Create setup script
-        setup_script = renderer.render_setup_script(project_name, config.config)
+        # Create setup script with or without Kong setup based on assume_kong_running
+        setup_script = renderer.render_setup_script(project_name, config.config, assume_kong_running)
         self.write_file(
             os.path.join(project_dir, "setup.sh"), 
             setup_script,
@@ -94,7 +94,7 @@ class FileSystemManager:
         )
         
         # Create README
-        readme = renderer.render_readme(project_name, config.config)
+        readme = renderer.render_readme(project_name, config.config, assume_kong_running)
         self.write_file(
             os.path.join(project_dir, "README.md"), 
             readme
@@ -107,6 +107,15 @@ class FileSystemManager:
             test_script,
             executable=True
         )
+        
+        # If Kong is already running, create a deployment script
+        if assume_kong_running:
+            deploy_script = renderer.render_deploy_script(project_name, config.config)
+            self.write_file(
+                os.path.join(project_dir, "deploy-to-kong.sh"), 
+                deploy_script,
+                executable=True
+            )
         
         # Create mock API implementations
         for service in config.config["services"]:

@@ -3,3 +3,5 @@ archive/
 venv
 **/__pycache__
 .DS_Store
+output
+config.json

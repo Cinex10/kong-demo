@@ -43,7 +43,7 @@ class GroqAiModelClient(AiModelClient):
             raise ValueError("API key is required for OpenAI API access")
         self.client = Groq(api_key=self.api_key)
     
-    def generate_code(self, prompt: str, model: str = "qwen-2.5-coder-32b", max_tokens: int = 4096, temperature: float = 0.6) -> str:
+    def generate_code(self, prompt: str, model: str = "llama3-70b-8192", max_tokens: int = 4096, temperature: float = 0.6) -> str:
         """Generate code using the OpenAI API
         
         Args:

@@ -24,9 +24,31 @@ class UserInputCollector:
         "9": "auto-insurance"
     }
     
+    # Available Kong features
+    KONG_FEATURES = [
+        "key-auth",
+        "jwt",
+        "oauth2",
+        "basic-auth",
+        "rate-limiting",
+        "response-transformer",
+        "request-transformer",
+        "http-log",
+        "cors",
+        "proxy-cache",
+        "ip-restriction",
+        "request-size-limiting",
+        "acl",
+        "bot-detection"
+    ]
+    
     def __init__(self, config_manager: Optional[ConfigurationManager] = None) -> None:
         """Initialize the input collector with a configuration manager"""
         self.config_manager = config_manager or ConfigurationManager()
+        self.business_type = "generic"
+        self.business_params = {}
+        self.kong_features = []
+        self.api_specification = None
         
     def collect_project_info(self) -> str:
         """Collect basic project information"""
@@ -36,52 +58,17 @@ class UserInputCollector:
         project_name = input("Project name: ")
         return project_name
     
-    def collect_services(self) -> None:
-        """Collect information about backend services"""
-        print("\nBackend Services Configuration")
-        print("------------------------------")
-        
-        num_services = self._get_int_input("Number of backend services to configure: ", 1)
-        
-        for i in range(num_services):
-            print(f"\nService {i+1}:")
-            
-            # Get service name and URL
-            service_name = input("Service name: ")
-            service_url = input("Service URL (e.g., http://my-api:8080): ")
-            
-            if not service_name:
-                service_name = f"service_{i+1}"
-                print(f"Using default service name: {service_name}")
-            
-            # Collect business type for mock API generation
-            business_type, business_params = self._collect_business_type(service_name)
-            
-            # Add service to configuration
-            service_name = self.config_manager.add_service(service_name, service_url)
-            
-            # Store business type and parameters in service metadata
-            service = next((s for s in self.config_manager.config["services"] if s["name"] == service_name), None)
-            if service:
-                if "metadata" not in service:
-                    service["metadata"] = {}
-                service["metadata"]["business_type"] = business_type
-                service["metadata"]["business_params"] = business_params
-            
-            # Collect routes for this service
-            self._collect_routes_for_service(service_name)
-    
-    def _collect_business_type(self, service_name: str) -> Tuple[str, Dict[str, Any]]:
-        """Collect business type and parameters for mock API generation"""
-        print("\nBusiness Logic Type for Mock API Generation")
-        print("------------------------------------------")
-        print("Select a business type for the mock API:")
+    def collect_business_info(self) -> Tuple[str, Dict[str, Any]]:
+        """Collect business domain information"""
+        print("\nBusiness Domain Selection")
+        print("-------------------------")
+        print("Select a business domain for your API:")
         
         for key, value in self.BUSINESS_TYPES.items():
             print(f"{key}. {value}")
             
         while True:
-            choice = input("Choose a business type (default: 1): ") or "1"
+            choice = input("Choose a business domain (default: 1): ") or "1"
             if choice in self.BUSINESS_TYPES:
                 business_type = self.BUSINESS_TYPES[choice]
                 break
@@ -100,14 +87,6 @@ class UserInputCollector:
             policy_choice = self._get_int_input("Choose a policy type (1-5, default: 1): ", 1)
             business_params["policy_type"] = policy_types[policy_choice - 1]
             
-            # Select features
-            features = ["basic", "premium-calculation", "risk-assessment", "document-management", "claims-integration"]
-            selected_features = self._collect_multiple_choice(
-                "Select features to include (comma-separated numbers):",
-                features
-            )
-            business_params["features"] = selected_features
-            
         elif "ecommerce" in business_type:
             # E-commerce-specific parameters
             if "product" in business_type:
@@ -118,25 +97,176 @@ class UserInputCollector:
                     
                 product_choice = self._get_int_input("Choose a product type (1-5, default: 1): ", 1)
                 business_params["product_type"] = product_types[product_choice - 1]
-            
-            # Select features
-            features = ["basic", "search", "recommendations", "inventory-management", "user-accounts", "reviews", "ratings"]
-            selected_features = self._collect_multiple_choice(
-                "Select features to include (comma-separated numbers):",
-                features
-            )
-            business_params["features"] = selected_features
-        else:
-            # Generic business types
-            # Select generic features
-            features = ["basic", "advanced-validation", "authentication", "pagination", "filtering", "sorting", "caching"]
-            selected_features = self._collect_multiple_choice(
-                "Select features to include (comma-separated numbers):",
-                features
-            )
-            business_params["features"] = selected_features
+        
+        self.business_type = business_type
+        self.business_params = business_params
         
         return business_type, business_params
+    
+    def collect_kong_features(self) -> List[str]:
+        """Collect Kong features to include"""
+        print("\nKong Features Selection")
+        print("----------------------")
+        print("Select Kong Gateway features to include:")
+        
+        for i, feature in enumerate(self.KONG_FEATURES, 1):
+            print(f"{i}. {feature}")
+            
+        selected_features = self._collect_multiple_choice(
+            "Select features to include (comma-separated numbers):",
+            self.KONG_FEATURES
+        )
+        
+        self.kong_features = selected_features
+        
+        return selected_features
+    
+    def collect_services(self) -> None:
+        """Collect information about backend services - now uses pre-generated API spec"""
+        print("\nServices are being configured based on API specification")
+        print("--------------------------------------------------------")
+        
+        # Store service names to avoid duplicates
+        added_services = set()
+        
+        # If API specification is available, use it
+        if self.api_specification and "services" in self.api_specification:
+            for service_spec in self.api_specification["services"]:
+                service_name = service_spec.get("name", "")
+                
+                # Skip if service already added
+                if service_name in added_services:
+                    continue
+                    
+                service_url = service_spec.get("url", f"http://{service_name}:8080")
+                
+                print(f"Adding service: {service_name} ({service_url})")
+                
+                # Add service to configuration
+                service_name = self.config_manager.add_service(service_name, service_url)
+                added_services.add(service_name)
+                
+                # Store business type in service metadata
+                service = next((s for s in self.config_manager.config["services"] if s["name"] == service_name), None)
+                if service:
+                    if "metadata" not in service:
+                        service["metadata"] = {}
+                    service["metadata"]["business_type"] = self.business_type
+                    service["metadata"]["business_params"] = self.business_params
+                    service["metadata"]["specification"] = service_spec
+                
+                # Add routes for this service
+                if "routes" in service_spec:
+                    for route_spec in service_spec["routes"]:
+                        route_path = route_spec.get("path", f"/{service_name}")
+                        route_name = route_spec.get("name", f"{service_name}-route")
+                        
+                        print(f"  Adding route: {route_path} ({route_name})")
+                        
+                        # Add route to configuration
+                        self.config_manager.add_route(service_name, [route_path], route_name)
+        else:
+            # Fallback to manual entry if no API specification
+            print("No API specification available. Falling back to manual configuration.")
+            self._collect_services_manually()
+    
+    def _collect_services_manually(self) -> None:
+        """Legacy method to collect services manually"""
+        num_services = self._get_int_input("Number of backend services to configure: ", 1)
+        
+        for i in range(num_services):
+            print(f"\nService {i+1}:")
+            
+            # Get service name and URL
+            service_name = input("Service name: ")
+            service_url = input("Service URL (e.g., http://my-api:8080): ")
+            
+            if not service_name:
+                service_name = f"service_{i+1}"
+                print(f"Using default service name: {service_name}")
+            
+            # Add service to configuration
+            service_name = self.config_manager.add_service(service_name, service_url)
+            
+            # Store business type in service metadata
+            service = next((s for s in self.config_manager.config["services"] if s["name"] == service_name), None)
+            if service:
+                if "metadata" not in service:
+                    service["metadata"] = {}
+                service["metadata"]["business_type"] = self.business_type
+                service["metadata"]["business_params"] = self.business_params
+            
+            # Collect routes for this service
+            self._collect_routes_for_service(service_name)
+    
+    def collect_plugins(self) -> None:
+        """Configure plugins based on selected features"""
+        print("\nConfiguring Kong Plugins")
+        print("----------------------")
+        
+        # Add plugins based on selected features
+        for feature in self.kong_features:
+            feature_lower = feature.lower()
+            
+            # Authentication plugins
+            if feature_lower in ["key-auth", "jwt", "oauth2", "basic-auth"]:
+                print(f"Adding authentication plugin: {feature_lower}")
+                self.config_manager.add_plugin(feature_lower)
+                
+                # Add a demo consumer with this auth type
+                username = "demo-user"
+                self.config_manager.add_consumer(username, feature_lower)
+                
+            # Rate limiting
+            elif feature_lower == "rate-limiting":
+                limit_per_minute = self._get_int_input("Requests per minute (default: 60): ", 60)
+                
+                print(f"Adding rate limiting plugin: {limit_per_minute} requests per minute")
+                self.config_manager.add_plugin("rate-limiting", {
+                    "minute": limit_per_minute,
+                    "policy": "local"
+                })
+                
+            # Response transformations
+            elif feature_lower == "response-transformer":
+                print("Adding response transformer plugin")
+                self.config_manager.add_plugin("response-transformer", {
+                    "add": {
+                        "headers": ["x-kong-gateway: true"]
+                    }
+                })
+                
+            # Request transformations
+            elif feature_lower == "request-transformer":
+                print("Adding request transformer plugin")
+                self.config_manager.add_plugin("request-transformer", {
+                    "add": {
+                        "headers": ["x-kong-request: true"]
+                    }
+                })
+                
+            # Logging
+            elif feature_lower == "http-log":
+                log_endpoint = input("Log endpoint URL (default: http://logger:3000/log): ") or "http://logger:3000/log"
+                
+                print(f"Adding HTTP logging plugin to endpoint: {log_endpoint}")
+                self.config_manager.add_plugin("http-log", {
+                    "http_endpoint": log_endpoint,
+                    "method": "POST",
+                    "timeout": 10000,
+                    "keepalive": 60000
+                })
+                
+            # CORS
+            elif feature_lower == "cors":
+                print("Adding CORS plugin")
+                self.config_manager.add_plugin("cors", {
+                    "origins": ["*"],
+                    "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+                    "headers": ["Content-Type", "Authorization"],
+                    "exposed_headers": ["X-Auth-Token"],
+                    "max_age": 3600
+                })
     
     def _collect_multiple_choice(self, prompt: str, options: List[str]) -> List[str]:
         """Collect multiple choice options from a list"""
@@ -173,120 +303,40 @@ class UserInputCollector:
             # Add route to configuration
             self.config_manager.add_route(service_name, [route_path])
     
-    def collect_plugins(self) -> None:
-        """Collect information about plugins and security settings"""
-        print("\nSecurity and Plugins")
-        print("-------------------")
-        
-        # Authentication
-        auth_plugin = self._collect_auth_plugin()
-        
-        # Rate limiting
-        self._collect_rate_limiting()
-        
-        # Logging
-        self._collect_logging()
-        
-        # CORS
-        self._collect_cors()
-        
-    def _collect_auth_plugin(self) -> Optional[Dict[str, Any]]:
-        """Collect authentication plugin configuration"""
-        auth_types: Dict[str, str] = {
-            "1": "key-auth",
-            "2": "jwt",
-            "3": "oauth2",
-            "4": "basic-auth",
-            "5": "none"
-        }
-        
-        print("Authentication type:")
-        for k, v in auth_types.items():
-            print(f"{k}. {v}")
-        
-        while True:
-            auth_choice = input("Choose authentication (1-5): ")
-            if auth_choice in auth_types:
-                break
-            print("Invalid choice. Please choose a number between 1 and 5.")
-            
-        auth_type = auth_types[auth_choice]
-        
-        if auth_type != "none":
-            auth_plugin = self.config_manager.add_plugin(auth_type)
-            
-            # Create a demo consumer with this auth type
-            username = input("Consumer username (default: demo-user): ") or "demo-user"
-            self.config_manager.add_consumer(username, auth_type)
-            
-            return auth_plugin
-        
-        return None
-    
-    def _collect_rate_limiting(self) -> None:
-        """Collect rate limiting configuration"""
-        rate_limit = input("Enable rate limiting? (y/n): ")
-        
-        if rate_limit.lower() == 'y':
-            limit_per_minute = self._get_int_input("Requests per minute (default: 60): ", 60)
-            
-            self.config_manager.add_plugin("rate-limiting", {
-                "minute": limit_per_minute,
-                "policy": "local"
-            })
-    
-    def _collect_logging(self) -> None:
-        """Collect logging configuration"""
-        logging = input("Enable request/response logging? (y/n): ")
-        
-        if logging.lower() == 'y':
-            log_endpoint = input("Log endpoint URL (default: http://logger:3000/log): ") or "http://logger:3000/log"
-            
-            self.config_manager.add_plugin("http-log", {
-                "http_endpoint": log_endpoint,
-                "method": "POST",
-                "timeout": 10000,
-                "keepalive": 60000
-            })
-    
-    def _collect_cors(self) -> None:
-        """Collect CORS configuration"""
-        cors = input("Enable CORS? (y/n): ")
-        
-        if cors.lower() == 'y':
-            origins = input("Allowed origins (comma-separated, default: *): ") or "*"
-            origins_list = [origin.strip() for origin in origins.split(",")]
-            
-            self.config_manager.add_plugin("cors", {
-                "origins": origins_list,
-                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-                "headers": ["Content-Type", "Authorization"],
-                "exposed_headers": ["X-Auth-Token"],
-                "max_age": 3600,
-                "credentials": True
-            })
-    
     def _get_int_input(self, prompt: str, default: Optional[int] = None) -> int:
-        """Get integer input with validation and default value"""
+        """Get integer input from user with validation"""
         while True:
-            value = input(prompt)
-            
-            # Use default if empty
-            if not value and default is not None:
-                return default
-                
             try:
+                value = input(prompt)
+                if not value and default is not None:
+                    return default
                 return int(value)
             except ValueError:
                 print("Please enter a valid number.")
-                
+    
+    def set_api_specification(self, specification: Dict[str, Any]) -> None:
+        """Set the API specification to use for service configuration"""
+        self.api_specification = specification
+    
     def collect_all(self) -> Tuple[str, ConfigurationManager]:
-        """Collect all configuration in one go"""
+        """Collect all user input and return the final configuration"""
+        # First collect project name
         project_name = self.collect_project_info()
+        
+        # Then collect business domain info
+        self.collect_business_info()
+        
+        # Collect Kong features
+        self.collect_kong_features()
+        
+        # At this point, we would generate API specification
+        # This will be done in the DemoProjectGenerator class
+        
+        # Collect services (using API spec if available)
         self.collect_services()
+        
+        # Collect plugins based on features
         self.collect_plugins()
         
-        # Validate the final configuration
-        self.config_manager.validate()
-        
+        # Return the project name and config manager
         return project_name, self.config_manager 
