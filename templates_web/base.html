@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kong Demo Generator - {% block title %}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 960px;
+            padding-top: 2rem;
+        }
+        .flash-messages {
+            margin-bottom: 1rem;
+        }
+        .navbar-brand img {
+            height: 36px;
+            margin-right: 10px;
+        }
+
+        .navbar {
+            background: rgba(96, 113, 145, 0.85);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #3B82F6;
+        }
+        .navbar a {
+            color: #F3F4F6;
+            text-decoration: none;
+            margin: 0 10px;
+            transition: color 0.2s ease-in-out;
+        }
+        .navbar a:hover {
+            color: #3B82F6;
+        }
+
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg shadow-sm">  
+        <div class="container">
+            <a href="/" title="Page d'accueil">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Keiken Digital" style="height: 100%; max-height: 60px; width: auto;">
+            </a>
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                Kong Demo Generator
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Accueil</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/generate">Générateur</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/upload-config">Importer Config</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} shadow-sm">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

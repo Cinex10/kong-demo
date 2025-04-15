@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Importer Configuration{% endblock %}
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Importer un Fichier de Configuration</h2>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="config_file" class="form-label">Fichier de Configuration</label>
+                    <input type="file" class="form-control" id="config_file" name="config_file" required>
+                    <div class="form-text">Formats acceptés: JSON, YAML</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="project_name" class="form-label">Nom du Projet (optionnel)</label>
+                    <input type="text" class="form-control" id="project_name" name="project_name" placeholder="Laissez vide pour utiliser le nom par défaut">
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Importer et Générer</button>
+            </form>
+        </div>
+    </div>
+{% endblock %}

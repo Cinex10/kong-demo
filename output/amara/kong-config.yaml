@@ -1,0 +1,45 @@
+consumers: []
+plugins:
+- config:
+    http_endpoint: http://logger:3000/log
+    keepalive: 60000
+    method: POST
+    timeout: 10000
+  name: http-log
+routes:
+- name: amara-route-1
+  paths:
+  - /api/amara
+  service_name: amara
+- name: aaaa-route-1
+  paths:
+  - /api/vendre
+  service_name: aaaa
+- name: amama-route-1
+  paths:
+  - /api/inventory-management
+  service_name: amama
+services:
+- metadata:
+    business_params:
+      features:
+      - basic
+      policy_type: health
+    business_type: insurance
+  name: amara
+  url: http://localhost:9999
+- metadata:
+    business_params:
+      features:
+      - search
+    business_type: ecommerce
+  name: aaaa
+  url: http://localhost:9922
+- metadata:
+    business_params:
+      features:
+      - inventory-management
+      product_type: clothing
+    business_type: ecommerce-product
+  name: amama
+  url: http://localhost:4321

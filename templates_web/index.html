@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Accueil{% endblock %}
+{% block content %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2>Kong Demo Generator</h2>
+        </div>
+        <div class="card-body">
+            <p class="lead">
+                Bienvenue dans l'interface web du Kong Demo Generator. Cet outil vous permet de créer facilement
+                des configurations personnalisées pour Kong API Gateway.
+            </p>
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Générateur Interactif</h5>
+                            <p class="card-text">Créez une configuration Kong en remplissant un formulaire interactif.</p>
+                            <a href="/generate" class="btn btn-primary">Démarrer</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">Importer une Configuration</h5>
+                            <p class="card-text">Téléchargez un fichier de configuration existant.</p>
+                            <a href="/upload-config" class="btn btn-primary">Importer</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% if projects %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Projets Existants</h3>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    {% for project in projects %}
+                        <a href="{{ url_for('project_details', project_name=project) }}" class="list-group-item list-group-item-action">
+                            {{ project }}
+                        </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,77 @@
+{
+  "services": [
+    {
+      "name": "amara",
+      "url": "http://localhost:9999",
+      "metadata": {
+        "business_type": "insurance",
+        "business_params": {
+          "policy_type": "health",
+          "features": [
+            "basic"
+          ]
+        }
+      }
+    },
+    {
+      "name": "aaaa",
+      "url": "http://localhost:9922",
+      "metadata": {
+        "business_type": "ecommerce",
+        "business_params": {
+          "features": [
+            "search"
+          ]
+        }
+      }
+    },
+    {
+      "name": "amama",
+      "url": "http://localhost:4321",
+      "metadata": {
+        "business_type": "ecommerce-product",
+        "business_params": {
+          "product_type": "clothing",
+          "features": [
+            "inventory-management"
+          ]
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "service_name": "amara",
+      "paths": [
+        "/api/amara"
+      ],
+      "name": "amara-route-1"
+    },
+    {
+      "service_name": "aaaa",
+      "paths": [
+        "/api/vendre"
+      ],
+      "name": "aaaa-route-1"
+    },
+    {
+      "service_name": "amama",
+      "paths": [
+        "/api/inventory-management"
+      ],
+      "name": "amama-route-1"
+    }
+  ],
+  "plugins": [
+    {
+      "name": "http-log",
+      "config": {
+        "http_endpoint": "http://logger:3000/log",
+        "method": "POST",
+        "timeout": 10000,
+        "keepalive": 60000
+      }
+    }
+  ],
+  "consumers": []
+}

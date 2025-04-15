@@ -1,0 +1,33 @@
+_format_version: '3.0'
+consumer_groups: []
+consumers: []
+plugins:
+- config:
+    http_endpoint: http://logger:3000/log
+    keepalive: 60000
+    method: POST
+    timeout: 10000
+  name: http-log
+routes:
+- name: amara-route-1
+  paths:
+  - /api/amara
+  service:
+    name: amara
+- name: aaaa-route-1
+  paths:
+  - /api/vendre
+  service:
+    name: aaaa
+- name: amama-route-1
+  paths:
+  - /api/inventory-management
+  service:
+    name: amama
+services:
+- name: amara
+  url: http://localhost:9999
+- name: aaaa
+  url: http://localhost:9922
+- name: amama
+  url: http://localhost:4321

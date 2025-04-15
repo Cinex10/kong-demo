@@ -1,0 +1,27 @@
+{
+  "services": [
+    {
+      "name": "amar",
+      "url": "http://my-api:8080",
+      "metadata": {
+        "business_type": "generic",
+        "business_params": {
+          "features": [
+            "basic"
+          ]
+        }
+      }
+    }
+  ],
+  "routes": [
+    {
+      "service_name": "amar",
+      "paths": [
+        "/api/users"
+      ],
+      "name": "amar-route-1"
+    }
+  ],
+  "plugins": [],
+  "consumers": []
+}

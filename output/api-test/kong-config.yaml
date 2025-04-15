@@ -1,0 +1,15 @@
+consumers: []
+plugins: []
+routes:
+- name: amar-route-1
+  paths:
+  - /api/users
+  service_name: amar
+services:
+- metadata:
+    business_params:
+      features:
+      - basic
+    business_type: generic
+  name: amar
+  url: http://my-api:8080

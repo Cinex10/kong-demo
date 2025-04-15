@@ -1,0 +1,9 @@
+{
+  "project_name": "api",
+  "api": {
+    "name": "api",
+    "path": "/api/v1",
+    "upstream_url": "http://svc-1:8932"
+  },
+  "plugins": []
+}

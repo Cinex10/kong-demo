@@ -1,0 +1,13 @@
+_format_version: '3.0'
+consumer_groups: []
+consumers: []
+plugins: []
+routes:
+- name: amar-route-1
+  paths:
+  - /api/users
+  service:
+    name: amar
+services:
+- name: amar
+  url: http://my-api:8080
