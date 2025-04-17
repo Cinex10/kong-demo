@@ -52,7 +52,7 @@ class ApiSpecificationGenerator:
         # Generate specification using the AI model
         try:
             response = self.ai_client.generate_code(prompt)
-            specification = self._extract_json_from_response(response)
+            specification = self._extract_json_from_response(response, business_type)
             return specification
         except Exception as e:
             print(f"Error generating specification with AI: {str(e)}")
@@ -98,7 +98,7 @@ Return ONLY a valid JSON object with this structure:
 Make sure the specification is practical and realistic for the {business_type} domain, with appropriate endpoints and data structures. Include at least 2-3 services with multiple endpoints for each. Ensure all JSON is properly formatted.
 """
     
-    def _extract_json_from_response(self, response: str) -> Dict[str, Any]:
+    def _extract_json_from_response(self, response: str, business_type: str) -> Dict[str, Any]:
         """
         Extract JSON from the AI model response
         
